@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Zen Snake - 10s Clearance</title>
+    <title>Zen Snake - Manual Restart</title>
     <style>
         body {
             display: flex; flex-direction: column; justify-content: center; align-items: center;
@@ -19,7 +19,20 @@
         #leaderboard { width: 90vw; max-width: 400px; background: #1e1e1e; margin-top: 15px; padding: 10px; border-radius: 8px; height: 120px; display: flex; flex-direction: column; }
         #score-list { flex-grow: 1; overflow-y: scroll; font-size: 0.8rem; }
         .score-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #2a2a2a; }
-        #overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); padding: 20px; border: 2px solid #4caf50; border-radius: 10px; display: none; text-align: center; z-index: 100; }
+        
+        /* Updated Overlay with Button */
+        #overlay { 
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            background: rgba(0,0,0,0.95); padding: 30px; border: 2px solid #4caf50; 
+            border-radius: 12px; display: none; text-align: center; z-index: 100;
+            box-shadow: 0 0 40px rgba(0,0,0,0.8);
+        }
+        #new-game-btn {
+            margin-top: 20px; padding: 12px 24px; font-size: 1rem; font-weight: bold;
+            background-color: #4caf50; color: white; border: none; border-radius: 6px;
+            cursor: pointer; pointer-events: auto; /* Ensures it reacts to touch/click */
+        }
+        #new-game-btn:active { background-color: #388e3c; }
     </style>
 </head>
 <body>
@@ -30,9 +43,11 @@
     <div id="timer-container"><div id="timer-bar"></div></div>
     <canvas id="gameCanvas" width="400" height="400"></canvas>
     <div id="leaderboard"><div id="score-list"></div></div>
+    
     <div id="overlay">
         <h2 id="overlay-text" style="color:#4caf50; margin:0;">GAME OVER</h2>
         <p id="overlay-sub" style="margin:5px 0 0 0;">Ranked #1</p>
+        <button id="new-game-btn">NEW GAME</button>
     </div>
 
     <script>
@@ -44,6 +59,8 @@
         const timerContainer = document.getElementById("timer-container");
         const timerBar = document.getElementById("timer-bar");
         const overlay = document.getElementById("overlay");
+        const overlaySub = document.getElementById("overlay-sub");
+        const newGameBtn = document.getElementById("new-game-btn");
 
         const gridSize = 20;
         const tileCount = canvas.width / gridSize;
@@ -53,6 +70,7 @@
         let snake = [{x: 10, y: 10}];
         let food = {x: 5, y: 5}, hazards = [];
         let isClearanceMode = false, clearanceTimeLeft = 0, clearanceInterval = null;
+        let autoRestartTimeout = null;
 
         // --- SWIPE LOGIC ---
         let tStartX = 0, tStartY = 0;
@@ -67,6 +85,14 @@
             }
         }, false);
 
+        // --- NEW GAME BUTTON CLICK ---
+        newGameBtn.addEventListener('click', () => {
+            clearTimeout(autoRestartTimeout);
+            overlay.style.display = "none";
+            resetGame();
+            main();
+        });
+
         function main() {
             if (didGameEnd()) { handleGameOver(); return; }
             setTimeout(() => {
@@ -77,7 +103,7 @@
         }
 
         function startClearanceMode() {
-            isClearanceMode = true; clearanceTimeLeft = 10; // Updated to 10 seconds
+            isClearanceMode = true; clearanceTimeLeft = 10;
             timerContainer.style.display = "block";
             clearInterval(clearanceInterval);
             clearanceInterval = setInterval(() => {
@@ -96,7 +122,7 @@
             if (isClearanceMode && hIndex !== -1) {
                 hazards.splice(hIndex, 1);
                 score += 20; scoreDisplay.innerHTML = score;
-                snake.unshift(head); // Treat hazard like food (snake grows)
+                snake.unshift(head);
             } else if (head.x === food.x && head.y === food.y) {
                 score += 10; scoreDisplay.innerHTML = score;
                 snake.unshift(head);
@@ -114,10 +140,7 @@
             while (!valid) {
                 food.x = Math.floor(Math.random() * tileCount);
                 food.y = Math.floor(Math.random() * tileCount);
-                // STRICT CHECK: Not on snake and not on hazard
-                const onSnake = snake.some(p => p.x === food.x && p.y === food.y);
-                const onHazard = hazards.some(h => h.x === food.x && h.y === food.y);
-                if (!onSnake && !onHazard) valid = true;
+                if (!snake.some(p => p.x === food.x && p.y === food.y) && !hazards.some(h => h.x === food.x && h.y === food.y)) valid = true;
             }
         }
 
@@ -126,10 +149,7 @@
             while (!valid) {
                 hX = Math.floor(Math.random() * tileCount);
                 hY = Math.floor(Math.random() * tileCount);
-                const onSnake = snake.some(p => p.x === hX && p.y === hY);
-                const onFood = (food.x === hX && food.y === hY);
-                const onHazard = hazards.some(h => h.x === hX && h.y === hY);
-                if (!onSnake && !onFood && !onHazard) valid = true;
+                if (!snake.some(p => p.x === hX && p.y === hY) && (food.x !== hX || food.y !== hY) && !hazards.some(h => h.x === hX && h.y === hY)) valid = true;
             }
             hazards.push({x: hX, y: hY});
         }
@@ -152,7 +172,13 @@
             const rank = saveScore(score);
             overlay.style.display = "block";
             overlaySub.innerText = rank !== -1 ? `Ranked #${rank+1}` : "Game Over";
-            setTimeout(() => { overlay.style.display = "none"; resetGame(); main(); }, 1500);
+            
+            // Auto-restart after 5 seconds if button isn't clicked
+            autoRestartTimeout = setTimeout(() => {
+                overlay.style.display = "none";
+                resetGame();
+                main();
+            }, 5000);
         }
 
         function resetGame() {
